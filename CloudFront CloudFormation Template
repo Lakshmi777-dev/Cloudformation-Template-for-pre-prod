@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Sanitized CloudFront distributions for Frontend and API Gateway (Pre-Prod)"
+
+############################
+# Parameters
+############################
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pre-prod
+
+  FrontendBucket1:
+    Type: String
+    Description: S3 bucket for frontend app 1 (without .s3.amazonaws.com)
+
+  FrontendBucket2:
+    Type: String
+    Description: S3 bucket for frontend app 2 (without .s3.amazonaws.com)
+
+  FrontendBucket3:
+    Type: String
+    Description: S3 bucket for frontend app 3 (without .s3.amazonaws.com)
+
+  ApiGatewayDomain:
+    Type: String
+    Description: API Gateway execute-api domain (example: abc123.execute-api.region.amazonaws.com)
+
+  ApiGatewayStage:
+    Type: String
+    Default: pre-prod
+
+############################
+# Resources
+############################
+Resources:
+
+  ################ OAI ################
+  CloudFrontOriginIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: "CloudFront access identity"
+
+  ################ Security Headers ################
+  IFrameResponseHeaderPolicy:
+    Type: AWS::CloudFront::ResponseHeadersPolicy
+    Properties:
+      ResponseHeadersPolicyConfig:
+        Name: !Sub "iframe-policy-${EnvironmentName}"
+        Comment: "Allows iframe embedding via CSP"
+        SecurityHeadersConfig:
+          ContentSecurityPolicy:
+            ContentSecurityPolicy: "frame-ancestors *"
+            Override: true
+
+  ################ Frontend Distribution 1 ################
+  FrontendDistribution1:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Frontend-App1-${EnvironmentName}"
+        DefaultRootObject: index.html
+
+        Origins:
+          - Id: FrontendApp1
+            DomainName: !Sub "${FrontendBucket1}.s3.amazonaws.com"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendApp1
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachePolicyId: <>
+          ResponseHeadersPolicyId: !Ref IFrameResponseHeaderPolicy
+
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: "/index.html"
+            ErrorCachingMinTTL: 0
+
+  ################ Frontend Distribution 2 ################
+  FrontendDistribution2:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Frontend-App2-${EnvironmentName}"
+        DefaultRootObject: index.html
+
+        Origins:
+          - Id: FrontendApp2
+            DomainName: !Sub "${FrontendBucket2}.s3.amazonaws.com"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendApp2
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachePolicyId: <>
+          ResponseHeadersPolicyId: !Ref IFrameResponseHeaderPolicy
+
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  ################ Frontend Distribution 3 ################
+  FrontendDistribution3:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "Frontend-App3-${EnvironmentName}"
+        DefaultRootObject: index.html
+
+        Origins:
+          - Id: FrontendApp3
+            DomainName: !Sub "${FrontendBucket3}.s3.amazonaws.com"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOriginIdentity}"
+
+        DefaultCacheBehavior:
+          TargetOriginId: FrontendApp3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          CachePolicyId: <>
+          ResponseHeadersPolicyId: !Ref IFrameResponseHeaderPolicy
+
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  ################ API Gateway Distribution ################
+  ApiGatewayDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "API-Gateway-CloudFront-${EnvironmentName}"
+
+        Origins:
+          - Id: ApiGatewayOrigin
+            DomainName: !Ref ApiGatewayDomain
+            OriginPath: !Sub "/${ApiGatewayStage}"
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginSSLProtocols: [TLSv1.2]
+
+        DefaultCacheBehavior:
+          TargetOriginId: ApiGatewayOrigin
+          ViewerProtocolPolicy: https-only
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - POST
+            - PATCH
+            - DELETE
+          CachePolicyId: <>
+          OriginRequestPolicyId: <>
+
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+############################
+# Outputs
+############################
+Outputs:
+  FrontendApp1URL:
+    Value: !Sub "https://${FrontendDistribution1.DomainName}"
+    Description: Frontend App 1 URL
+
+  FrontendApp2URL:
+    Value: !Sub "https://${FrontendDistribution2.DomainName}"
+    Description: Frontend App 2 URL
+
+  FrontendApp3URL:
+    Value: !Sub "https://${FrontendDistribution3.DomainName}"
+    Description: Frontend App 3 URL
+
+  ApiGatewayCloudFrontURL:
+    Value: !Sub "https://${ApiGatewayDistribution.DomainName}"
+    Description: API Gateway CloudFront URL
