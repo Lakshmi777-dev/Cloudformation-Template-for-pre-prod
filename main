@@ -1,0 +1,201 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Main Stack - Deploys all Travart infrastructure'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name
+    Type: String
+    Default: pre-prod
+
+Resources:
+  # 1. VPC Stack
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-vpc-template.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # 2. IAM Role Stack
+  IAMRoleStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VPCStack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-iam-role.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 15
+
+  # # 3. Key Pair Stack
+  KeyPairStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VPCStack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-key.yaml
+      # Parameters:
+      #   EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 15
+
+  # 4. Security Group Stack
+  SecurityGroupStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - IAMRoleStack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-security-groups.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # 5. S3 Stack 
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - IAMRoleStack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-s3.yaml
+      # Parameters:
+      #   EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # 6. EC2 Servers Stack
+  EC2Stack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - IAMRoleStack
+    # - KeyPairStack
+    - SecurityGroupStack
+    - S3Stack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-ec2.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # # 7. Load Balancer Stack
+  LoadBalancerStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - EC2Stack
+    - SecurityGroupStack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-lb.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+
+  # 8. RDS Stack
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:  
+      - VPCStack
+      - SecurityGroupStack  
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/rds.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # 9. API Gateway Stack
+  ApiGatewayStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - EC2Stack
+    - LoadBalancerStack 
+    - SecurityGroupStack 
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-api-gateway.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+  # 10.Lambda Stack
+  LambdaStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - EC2Stack
+    - LoadBalancerStack 
+    - SecurityGroupStack 
+    - ApiGatewayStack
+    - S3Stack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-lambda.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+ 
+  # Cloudfront Stack
+  CloudfrontStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+    - VPCStack
+    - EC2Stack
+    - LoadBalancerStack 
+    - SecurityGroupStack 
+    - ApiGatewayStack
+    - S3Stack
+    Properties:
+      TemplateURL: https://<S3_BUCKET_NAME>.s3.<REGION>.amazonaws.com/travart-cloudfront.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+      TimeoutInMinutes: 30
+
+
+
+
+
+
+Outputs:
+  VPCStackOutput:
+    Description: "VPC Stack ID"
+    Value: !Ref VPCStack
+
+  IAMRoleStackOutput:
+    Description: "IAM Role Stack ID"
+    Value: !Ref IAMRoleStack
+
+  KeyPairStackOutput:
+    Description: "Key Pair Stack ID"
+    Value: !Ref KeyPairStack
+
+  SecurityGroupStackOutput:
+    Description: "Security Group Stack ID"
+    Value: !Ref SecurityGroupStack
+
+  S3StackOutput:
+    Description: "S3 Stack ID"
+    Value: !Ref S3Stack
+
+  EC2StackOutput:
+    Description: "EC2 Stack ID"
+    Value: !Ref EC2Stack
+
+  LoadBalancerStackOutput:
+    Description: "Load Balancer Stack ID"
+    Value: !Ref LoadBalancerStack
+
+  CloudfrontStackOutput:
+    Description: "CloudFront Stack ID"
+    Value: !Ref CloudfrontStack
+
+  ApiGatewayStackOutput:
+    Description: "API Gateway Stack ID"
+    Value: !Ref ApiGatewayStack
+
+  LambdaStack:
+    Description: "Lambda Gateway Stack ID"
+    Value: !Ref LambdaStack
+
+  RDSStackOutput:
+    Description: "RDS Stack ID"
+    Value: !Ref RDSStack
+    Export:
+      Name: !Sub "${EnvironmentName}-RDSStackID"
