@@ -1,0 +1,187 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: "Generic API Gateway setup for Pre-Production Environment (Sanitized)"
+
+############################
+# Parameters
+############################
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pre-prod
+
+  ApiSpecBucket:
+    Type: String
+    Description: S3 bucket containing OpenAPI specifications
+
+  InternalNlbDns:
+    Type: String
+    Description: Internal NLB DNS name (without port)
+
+  VpcLinkId:
+    Type: String
+    Description: VPC Link ID for API Gateway integration
+
+############################
+# Resources
+############################
+Resources:
+
+  ################ Logs + IAM ################
+
+  ApiGatewayAccessLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/apigateway/${EnvironmentName}-access-logs"
+      RetentionInDays: 14
+
+  ApiGatewayCloudWatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "APIGatewayRole-${EnvironmentName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs
+
+  ApiGatewayAccount:
+    Type: AWS::ApiGateway::Account
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayCloudWatchRole.Arn
+
+  ################ Product API ################
+
+  ProductRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "Product-API-${EnvironmentName}"
+      Description: "Product and Offering APIs"
+      EndpointConfiguration:
+        Types: [EDGE]
+      BodyS3Location:
+        Bucket: !Ref ApiSpecBucket
+        Key: "api-specs/product-api.json"
+
+  ProductDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - ProductRestApi
+      - ApiGatewayAccount
+    Properties:
+      RestApiId: !Ref ProductRestApi
+      Description: "Initial deployment"
+
+  ProductStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: !Ref EnvironmentName
+      RestApiId: !Ref ProductRestApi
+      DeploymentId: !Ref ProductDeployment
+      Variables:
+        service_url: !Sub "${InternalNlbDns}:8081"
+        vpc_link: !Ref VpcLinkId
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          DataTraceEnabled: true
+          LoggingLevel: INFO
+      AccessLogSetting:
+        DestinationArn: !GetAtt ApiGatewayAccessLogs.Arn
+        Format: |
+          {
+            "requestId":"$context.requestId",
+            "ip":"$context.identity.sourceIp",
+            "httpMethod":"$context.httpMethod",
+            "status":"$context.status",
+            "latency":"$context.responseLatency"
+          }
+
+  ################ User Management API ################
+
+  UserMgmtRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "User-Management-API-${EnvironmentName}"
+      EndpointConfiguration:
+        Types: [EDGE]
+      BodyS3Location:
+        Bucket: !Ref ApiSpecBucket
+        Key: "api-specs/user-management-api.json"
+
+  UserMgmtDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - UserMgmtRestApi
+      - ApiGatewayAccount
+    Properties:
+      RestApiId: !Ref UserMgmtRestApi
+
+  UserMgmtStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: !Ref EnvironmentName
+      RestApiId: !Ref UserMgmtRestApi
+      DeploymentId: !Ref UserMgmtDeployment
+      Variables:
+        service_url: !Sub "${InternalNlbDns}:8080"
+        vpc_link: !Ref VpcLinkId
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          LoggingLevel: INFO
+          DataTraceEnabled: true
+
+  ################ Common Backend API ################
+
+  CommonBackendRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub "Common-Backend-API-${EnvironmentName}"
+      EndpointConfiguration:
+        Types: [REGIONAL]
+      BodyS3Location:
+        Bucket: !Ref ApiSpecBucket
+        Key: "api-specs/common-backend-api.json"
+
+  CommonBackendDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - CommonBackendRestApi
+      - ApiGatewayAccount
+    Properties:
+      RestApiId: !Ref CommonBackendRestApi
+
+  CommonBackendStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      StageName: !Ref EnvironmentName
+      RestApiId: !Ref CommonBackendRestApi
+      DeploymentId: !Ref CommonBackendDeployment
+      Variables:
+        finance_url: !Sub "${InternalNlbDns}:8085"
+        filehub_url: !Sub "${InternalNlbDns}:8087"
+      MethodSettings:
+        - ResourcePath: "/*"
+          HttpMethod: "*"
+          MetricsEnabled: true
+          LoggingLevel: INFO
+
+############################
+# Outputs
+############################
+Outputs:
+  ProductApiUrl:
+    Description: Product API Invoke URL
+    Value: !Sub "https://${ProductRestApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
+
+  UserMgmtApiUrl:
+    Description: User Management API Invoke URL
+    Value: !Sub "https://${UserMgmtRestApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
+
+  CommonBackendApiUrl:
+    Description: Common Backend API Invoke URL
+    Value: !Sub "https://${CommonBackendRestApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}"
