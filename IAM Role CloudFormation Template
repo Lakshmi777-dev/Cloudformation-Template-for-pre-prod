@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'IAM Role and Instance Profile for EC2 instances (Sanitized & Least Privilege)'
+
+############################
+# Parameters
+############################
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pre-prod
+    Description: Environment name (used for naming and exports)
+
+############################
+# Resources
+############################
+
+  ################ EC2 IAM Role ################
+  EC2IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvironmentName}-ec2-role"
+      Description: IAM role for EC2 instances with required AWS service access
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        # CloudWatch logs & metrics
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+        # Read-only EC2 metadata & tagging
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+        # S3 access (can be replaced with custom policy)
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+        # SSM (recommended over SSH)
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  ################ Instance Profile ################
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "${EnvironmentName}-ec2-instance-profile"
+      Roles:
+        - !Ref EC2IAMRole
+
+############################
+# Outputs
+############################
+Outputs:
+  EC2IAMRoleName:
+    Description: EC2 IAM Role Name
+    Value: !Ref EC2IAMRole
+    Export:
+      Name: !Sub "${EnvironmentName}-EC2RoleName"
+
+  EC2IAMRoleArn:
+    Description: EC2 IAM Role ARN
+    Value: !GetAtt EC2IAMRole.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-EC2RoleArn"
+
+  EC2InstanceProfileName:
+    Description: EC2 Instance Profile Name
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub "${EnvironmentName}-EC2InstanceProfileName"
+
+  EC2InstanceProfileArn:
+    Description: EC2 Instance Profile ARN
+    Value: !GetAtt EC2InstanceProfile.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-EC2InstanceProfileArn"
