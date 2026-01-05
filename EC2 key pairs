@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create EC2 Key Pairs using Lambda and securely store private keys in S3 (Sanitized)
+
+############################
+# Parameters
+############################
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pre-prod
+    Description: Environment name
+
+  KeyBucketName:
+    Type: String
+    Default: ec2-key-backup-pre-prod
+    Description: S3 bucket to store private keys
+
+############################
+# Resources
+############################
+
+  ################ S3 Bucket ################
+  PrivateKeyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref KeyBucketName
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ################ IAM Role for Lambda ################
+  KeyPairLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvironmentName}-keypair-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+      Policies:
+        - PolicyName: KeyPairManagementPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:CreateKeyPair
+                  - ec2:DeleteKeyPair
+                Resource: "*"
+
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: !Sub "${PrivateKeyBucket.Arn}/*"
+
+  ################ Lambda Function ################
+  KeyPairLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${EnvironmentName}-keypair-handler"
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt KeyPairLambdaRole.Arn
+      Timeout: 300
+
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+
+          def lambda_handler(event, context):
+              ec2 = boto3.client('ec2')
+              s3 = boto3.client('s3')
+
+              key_name = event['ResourceProperties']['KeyName']
+              bucket = event['ResourceProperties']['BucketName']
+
+              try:
+                  if event['RequestType'] == 'Create':
+                      response = ec2.create_key_pair(KeyName=key_name)
+                      s3.put_object(
+                          Bucket=bucket,
+                          Key=f"{key_name}.pem",
+                          Body=response['KeyMaterial'],
+                          ServerSideEncryption='aws:kms',
+                          ContentType='text/plain'
+                      )
+
+                  elif event['RequestType'] == 'Delete':
+                      s3.delete_object(Bucket=bucket, Key=f"{key_name}.pem")
+                      ec2.delete_key_pair(KeyName=key_na_
