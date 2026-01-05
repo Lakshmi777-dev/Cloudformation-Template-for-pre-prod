@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'EC2 instances deployed in existing VPC using imported subnets, security groups, and key pairs (Sanitized)'
+
+############################
+# Parameters
+############################
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: pre-prod
+
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: AMI ID for EC2 instances
+
+  PrivateKeyName:
+    Type: String
+    Description: Key pair name for private EC2 instances
+
+  JumpBoxKeyName:
+    Type: String
+    Description: Key pair name for JumpBox instance
+
+############################
+# Resources
+############################
+Resources:
+
+  ################ Xplor Server ################
+  XplorServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.large
+      ImageId: !Ref AmiId
+      KeyName: !Ref PrivateKeyName
+      IamInstanceProfile: !ImportValue
+        Fn::Sub: "${EnvironmentName}-EC2InstanceProfile"
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: false
+          SubnetId: !ImportValue
+            Fn::Sub: "${EnvironmentName}-PrivateSubnet1"
+          GroupSet:
+            - !ImportValue
+              Fn::Sub: "${EnvironmentName}-XplorSG"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "Xplor-Server-${EnvironmentName}"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  ################ User Management Server ################
+  UserMgmtServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.medium
+      ImageId: !Ref AmiId
+      KeyName: !Ref PrivateKeyName
+      IamInstanceProfile: !ImportValue
+        Fn::Sub: "${EnvironmentName}-EC2InstanceProfile"
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: false
+          SubnetId: !ImportValue
+            Fn::Sub: "${EnvironmentName}-PrivateSubnet1"
+          GroupSet:
+            - !ImportValue
+              Fn::Sub: "${EnvironmentName}-UserMgmtSG"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "UserMgmt-Server-${EnvironmentName}"
+
+  ################ JumpBox ################
+  JumpBoxServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: !Ref AmiId
+      KeyName: !Ref JumpBoxKeyName
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: true
+          SubnetId: !ImportValue
+            Fn::Sub: "${EnvironmentName}-PublicSubnet1"
+          GroupSet:
+            - !ImportValue
+              Fn::Sub: "${EnvironmentName}-JumpBoxSG"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "JumpBox-${EnvironmentName}"
+
+  ################ Search Server ################
+  SearchServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.large
+      ImageId: !Ref AmiId
+      KeyName: !Ref PrivateKeyName
+      IamInstanceProfile: !ImportValue
+        Fn::Sub: "${EnvironmentName}-EC2InstanceProfile"
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: false
+          SubnetId: !ImportValue
+            Fn::Sub: "${EnvironmentName}-PrivateSubnet1"
+          GroupSet:
+            - !ImportValue
+              Fn::Sub: "${EnvironmentName}-SearchSG"
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 8
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub "Search-Server-${EnvironmentName}"
+
+  ################ Placement Server ################
+  PlacementServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.medium
+      ImageId: !Ref AmiId
+      KeyName: !Ref PrivateKeyName
+      IamInstanceProfile: !ImportValue
+        Fn::Sub: "${EnvironmentName}-EC2InstanceProfile"
+      NetworkInterfaces:
+        - DeviceIndex: 0
+          AssociatePublicIpAddress: false
+          SubnetId: !ImportValue
+            Fn::Sub: "${EnvironmentName}-PrivateSubnet1"
+          GroupSet:
+            - !ImportValue
